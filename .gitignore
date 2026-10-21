@@ -1,0 +1,17 @@
+# Swift Package Manager & Build artifacts
+.build/
+.swiftpm/
+
+# macOS system files
+.DS_Store
+*.swp
+*~
+
+# Xcode
+xcuserdata/
+*.xcworkspace
+DerivedData/
+
+# Agent scratch & local tools
+.agents/
+*.zip

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>PixelCraftApp</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.pixelcraft.pro</string>
+    <key>CFBundleName</key>
+    <string>PixelCraft Pro</string>
+    <key>CFBundleDisplayName</key>
+    <string>PixelCraft Pro</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Image Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.image</string>
+                <string>public.png</string>
+                <string>public.jpeg</string>
+                <string>public.tiff</string>
+                <string>public.heic</string>
+                <string>org.webmproject.webp</string>
+                <string>com.adobe.photoshop-image</string>
+                <string>com.pixelcraft.project</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+</dict>
+</plist>

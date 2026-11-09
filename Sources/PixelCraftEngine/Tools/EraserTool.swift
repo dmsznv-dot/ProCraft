@@ -15,6 +15,7 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
     private var touchedCoords: Set<TileCoord> = []
     private var cachedTiles: [TileCoord: [UInt8]] = [:]
     private var beforeTiles: [TileCoord: Data?] = [:]
+    private var pendingPreview: Set<TileCoord> = []
 
     public init(configuration: BrushConfiguration = BrushConfiguration()) {
         self.configuration = configuration
@@ -32,8 +33,20 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
         touchedCoords.removeAll()
         cachedTiles.removeAll()
         beforeTiles.removeAll()
+        pendingPreview.removeAll()
 
         renderEraseStamp(at: canvasPoint, document: document, layer: layer)
+        flushPreview(layer: layer)
+    }
+
+    /// Pushes erased tiles into the layer so the result is visible while dragging.
+    private func flushPreview(layer: BitmapLayer) {
+        for coord in pendingPreview {
+            if let bytes = cachedTiles[coord] {
+                layer.tileGrid.writeTileBytes(coord: coord, bytes: bytes)
+            }
+        }
+        pendingPreview.removeAll()
     }
 
     public func mouseDragged(to canvasPoint: CGPoint, document: Document) {
@@ -48,6 +61,7 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
 
         let stepDist = max(1.0, configuration.size * configuration.spacing)
         interpolateEraseLine(from: lastPt, to: canvasPoint, step: stepDist, document: document, layer: layer)
+        flushPreview(layer: layer)
     }
 
     public func mouseUp(at canvasPoint: CGPoint, document: Document) {
@@ -69,7 +83,9 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
                 if isCompletelyEmpty {
                     // Prune tile to reclaim 1 MB RAM
                     layer.tileGrid.removeTile(at: coord)
-                    afterTiles[coord] = nil
+                    // NB: `afterTiles[coord] = nil` would *remove* the key; we need an explicit nil entry
+                    // so redo knows to delete this tile again.
+                    afterTiles.updateValue(nil, forKey: coord)
                 } else {
                     let data = Data(tileBytes)
                     layer.tileGrid.loadTileData(coord: coord, data: data)
@@ -97,6 +113,16 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
     }
 
     public func cancel(document: Document) {
+        if isErasing, let layer = document.activeLayer as? BitmapLayer {
+            for (coord, maybeData) in beforeTiles {
+                if let data = maybeData {
+                    layer.tileGrid.loadTileData(coord: coord, data: data)
+                } else {
+                    layer.tileGrid.removeTile(at: coord)
+                }
+            }
+        }
+        pendingPreview.removeAll()
         isErasing = false
         inputPoints.removeAll()
         touchedCoords.removeAll()
@@ -181,6 +207,7 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
                 }
 
                 touchedCoords.insert(coord)
+                pendingPreview.insert(coord)
 
                 let tileOriginX = tx * tileSize
                 let tileOriginY = ty * tileSize
@@ -192,7 +219,7 @@ public final class EraserTool: DrawingTool, @unchecked Sendable {
 
                 guard localX0 <= localX1 && localY0 <= localY1 else { continue }
 
-                var tileBytes = cachedTiles[coord]!
+                guard var tileBytes = cachedTiles.removeValue(forKey: coord) else { continue }
 
                 for ly in localY0...localY1 {
                     let gy = tileOriginY + ly

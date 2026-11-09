@@ -101,22 +101,18 @@ public final class BitmapLayer: Layer, @unchecked Sendable {
         let sourceCoords = layer.tileGrid.allAllocatedCoordinates()
         guard !sourceCoords.isEmpty else { return }
         
-        let tileSize = SparseTileGrid.tileSize
         let sourceMode = layer.blendMode
         let sourceOpacity = layer.opacity
         let dstLockAlpha = self.lockAlpha
 
         for coord in sourceCoords {
-            guard let srcTex = layer.tileGrid.getTile(at: coord) else { continue }
-            let dstTex = self.tileGrid.getOrCreateTile(at: coord)
-            
-            var srcBytes = [UInt8](repeating: 0, count: SparseTileGrid.bytesPerTile)
-            var dstBytes = [UInt8](repeating: 0, count: SparseTileGrid.bytesPerTile)
-            
-            srcTex.getBytes(&srcBytes, bytesPerRow: tileSize * 4, from: MTLRegionMake2D(0, 0, tileSize, tileSize), mipmapLevel: 0)
-            dstTex.getBytes(&dstBytes, bytesPerRow: tileSize * 4, from: MTLRegionMake2D(0, 0, tileSize, tileSize), mipmapLevel: 0)
-            
+            guard let srcBytes = layer.tileGrid.readTileBytes(coord: coord) else { continue }
+            var dstBytes = self.tileGrid.readTileBytes(coord: coord)
+                ?? [UInt8](repeating: 0, count: SparseTileGrid.bytesPerTile)
+
             for i in stride(from: 0, to: SparseTileGrid.bytesPerTile, by: 4) {
+                // Fully transparent source pixels never change the backdrop.
+                if srcBytes[i + 3] == 0 { continue }
                 let db = SIMD4<Float>(
                     Float(dstBytes[i]) / 255.0,
                     Float(dstBytes[i + 1]) / 255.0,
@@ -129,26 +125,16 @@ public final class BitmapLayer: Layer, @unchecked Sendable {
                     Float(srcBytes[i + 2]) / 255.0,
                     Float(srcBytes[i + 3]) / 255.0
                 )
-                
+
                 let res = sourceMode.composite(backdrop: db, source: sb, opacity: sourceOpacity, lockAlpha: dstLockAlpha)
-                
+
                 dstBytes[i] = UInt8(max(0, min(255, round(res.x * 255.0))))
                 dstBytes[i + 1] = UInt8(max(0, min(255, round(res.y * 255.0))))
                 dstBytes[i + 2] = UInt8(max(0, min(255, round(res.z * 255.0))))
                 dstBytes[i + 3] = UInt8(max(0, min(255, round(res.w * 255.0))))
             }
-            
-            dstBytes.withUnsafeBytes { rawBuffer in
-                if let ptr = rawBuffer.baseAddress {
-                    dstTex.replace(
-                        region: MTLRegionMake2D(0, 0, tileSize, tileSize),
-                        mipmapLevel: 0,
-                        withBytes: ptr,
-                        bytesPerRow: tileSize * 4
-                    )
-                }
-            }
-            self.tileGrid.markDirty(coord: coord)
+
+            self.tileGrid.writeTileBytes(coord: coord, bytes: dstBytes)
         }
     }
 

@@ -123,6 +123,30 @@ public final class LiquifyEngine: @unchecked Sendable {
         }
     }
 
+    /// Renders only `rect` (canvas pixels) of the deformed image from `source` into `target`.
+    /// Used for interactive brushing: only the area under the brush is recomputed per mouse event.
+    public func renderRegion(source: SparseTileGrid, into target: SparseTileGrid, rect: CGRect) {
+        let minX = max(0, Int(floor(rect.minX)))
+        let maxX = min(width - 1, Int(ceil(rect.maxX)))
+        let minY = max(0, Int(floor(rect.minY)))
+        let maxY = min(height - 1, Int(ceil(rect.maxY)))
+        guard minX <= maxX, minY <= maxY else { return }
+
+        let transformEngine = TransformEngine()
+        for y in minY...maxY {
+            for x in minX...maxX {
+                let disp = displacementMap[y * width + x]
+                if abs(disp.x) < 0.001 && abs(disp.y) < 0.001 {
+                    target.writePixel(x: x, y: y, color: source.readPixel(x: x, y: y))
+                    continue
+                }
+                let srcPt = CGPoint(x: CGFloat(Float(x) - disp.x) + 0.5, y: CGFloat(Float(y) - disp.y) + 0.5)
+                let c = transformEngine.sample(grid: source, point: srcPt, mode: .bilinear)
+                target.writePixel(x: x, y: y, color: SIMD4<UInt8>(c.r, c.g, c.b, c.a))
+            }
+        }
+    }
+
     /// Renders the deformed result into a new SparseTileGrid.
     public func render(source: SparseTileGrid) -> SparseTileGrid {
         let output = SparseTileGrid(canvasSize: CGSize(width: width, height: height))

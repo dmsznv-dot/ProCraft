@@ -302,19 +302,18 @@ public final class ImageImporter: @unchecked Sendable {
                     let srcY = cMinY - oy
 
                     let coord = TileCoord(x: tx, y: ty)
-                    let texture = grid.getOrCreateTile(at: coord)
-
                     let sourceRowBytes = decoded.width * 4
-                    let sourcePtr = baseAddress + (srcY * decoded.width + srcX) * 4
+                    let sourcePtr = UnsafeRawPointer(baseAddress + (srcY * decoded.width + srcX) * 4)
 
-                    texture.replace(
-                        region: MTLRegionMake2D(destX, destY, destW, destH),
-                        mipmapLevel: 0,
-                        withBytes: sourcePtr,
-                        bytesPerRow: sourceRowBytes
+                    grid.writeRegion(
+                        coord: coord,
+                        x: destX,
+                        y: destY,
+                        width: destW,
+                        height: destH,
+                        from: sourcePtr,
+                        sourceBytesPerRow: sourceRowBytes
                     )
-
-                    grid.markDirty(coord: coord)
                 }
             }
         }

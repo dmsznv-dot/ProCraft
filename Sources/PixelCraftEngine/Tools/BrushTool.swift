@@ -54,6 +54,8 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
     private var cachedTiles: [TileCoord: [UInt8]] = [:]
     private var beforeTiles: [TileCoord: Data?] = [:]
     private var strokeCoverage: [TileCoord: [Float]] = [:]
+    /// Tiles modified since the last live-preview flush.
+    private var pendingPreview: Set<TileCoord> = []
 
     public init(configuration: BrushConfiguration = BrushConfiguration()) {
         self.configuration = configuration
@@ -70,9 +72,11 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
         cachedTiles.removeAll()
         beforeTiles.removeAll()
         strokeCoverage.removeAll()
+        pendingPreview.removeAll()
 
         // Immediate single stamp at click position
         renderStamp(at: canvasPoint, document: document, layer: layer)
+        flushPreview(layer: layer)
     }
 
     public func mouseDragged(to canvasPoint: CGPoint, document: Document) {
@@ -99,6 +103,17 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
 
             interpolateCatmullRom(p0: p0, p1: p1, p2: p2, p3: p3, step: stepDist, document: document, layer: layer)
         }
+        flushPreview(layer: layer)
+    }
+
+    /// Pushes the tiles touched by the latest stamps into the layer so the stroke is visible while drawing.
+    private func flushPreview(layer: BitmapLayer) {
+        for coord in pendingPreview {
+            if let bytes = cachedTiles[coord] {
+                layer.tileGrid.writeTileBytes(coord: coord, bytes: bytes)
+            }
+        }
+        pendingPreview.removeAll()
     }
 
     public func mouseUp(at canvasPoint: CGPoint, document: Document) {
@@ -145,6 +160,17 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
     }
 
     public func cancel(document: Document) {
+        // Roll back the live preview of the unfinished stroke.
+        if isDrawing, let layer = document.activeLayer as? BitmapLayer {
+            for (coord, maybeData) in beforeTiles {
+                if let data = maybeData {
+                    layer.tileGrid.loadTileData(coord: coord, data: data)
+                } else {
+                    layer.tileGrid.removeTile(at: coord)
+                }
+            }
+        }
+        pendingPreview.removeAll()
         isDrawing = false
         inputPoints.removeAll()
         touchedCoords.removeAll()
@@ -294,6 +320,7 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
                 }
 
                 touchedCoords.insert(coord)
+                pendingPreview.insert(coord)
 
                 let tileOriginX = tx * tileSize
                 let tileOriginY = ty * tileSize
@@ -305,8 +332,10 @@ public final class BrushTool: DrawingTool, @unchecked Sendable {
 
                 guard localX0 <= localX1 && localY0 <= localY1 else { continue }
 
-                var tileBytes = cachedTiles[coord]!
-                var coverage = strokeCoverage[coord]!
+                // Move the buffers out of the dictionaries so they are uniquely referenced and mutated
+                // in place (subscript-copy here used to duplicate 2 MB on every single stamp).
+                guard var tileBytes = cachedTiles.removeValue(forKey: coord),
+                      var coverage = strokeCoverage.removeValue(forKey: coord) else { continue }
 
                 for ly in localY0...localY1 {
                     let gy = tileOriginY + ly

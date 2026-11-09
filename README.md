@@ -79,24 +79,44 @@ swift test
 
 ---
 
+## Interface
+
+* **Bottom toolbar** — basic canvas tools only, each with an icon, a caption and a tooltip with its shortcut:
+  Move, Hand · Rectangle/Ellipse Select, Lasso, Crop · Brush, Eraser, Fill, Gradient, Eyedropper, plus primary/secondary colors.
+* **Options bar (top)** — settings of the active tool (size, hardness, opacity, tolerance, feather…), document size and zoom.
+* **Effects dock (right)** — Photoshop-style collapsed panels: Transform, Liquify, Pixelate, Chroma Key, Remove Background, ASCII Art.
+  Click an icon to slide its panel out. Transform / Pixelate / Chroma Key preview live on the layer; **Apply** (Return) commits an undoable step, **Cancel** (Esc) reverts.
+  Liquify is painted directly on the canvas; Chroma Key samples the key color by clicking the canvas.
+* **Layers (left)** — click to select, drag to reorder, right-click for rename / duplicate / merge / move / delete.
+
+---
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |:---|:---|
-| `⌘ N` | New Document |
+| `⌘ N` | New Document (size presets) |
 | `⌘ O` | Open Image or Project (PNG, JPG, TIFF, HEIC, PSD, PCPRO) |
 | `⌘ I` | Import Image as New Layer |
 | `⌘ S` | Save Project (`.pcpro`) |
-| `⇧ ⌘ S` | Export as Photoshop PSD (`.psd`) |
-| `⌘ Z` | Undo |
-| `⇧ ⌘ Z` | Redo |
+| `⇧ ⌘ S` | Save as Photoshop PSD (`.psd`) |
+| `⇧ ⌘ E` | Export Image (PNG 8/16-bit, JPEG, TIFF, HEIC) |
+| `⌘ Z` / `⇧ ⌘ Z` | Undo / Redo (Undo first cancels an un-applied effect preview) |
+| `⌘ A` / `⌘ D` / `⇧ ⌘ I` | Select All / Deselect / Inverse |
+| `⌫` | Clear selected pixels on the active layer |
 | `⇧ ⌘ N` | New Layer |
 | `⌘ J` | Duplicate Layer |
 | `⌘ E` | Merge Down |
-| `⌘ +` / `⌘ -` | Zoom In / Zoom Out |
-| `⌘ 0` | Actual Size (100%) |
-| `⌘ 9` | Fit to Screen |
-| `Space + Drag` | Pan / Hand Tool |
+| `⌘ ]` / `⌘ [` | Bring Layer Forward / Send Backward |
+| `⌘ =` / `⌘ -` | Zoom In / Zoom Out |
+| `⌘ 0` | Fit on Screen |
+| `⌘ 1` | Actual Size (100%) |
+| `Space + Drag` | Pan (with any tool) |
+| `⌘/⌥ + Scroll`, pinch | Zoom around the cursor |
+| `V H M O L C B E K G I` | Move, Hand, Select, Ellipse, Lasso, Crop, Brush, Eraser, Fill, Gradient, Eyedropper |
+| `[` / `]` | Smaller / larger brush |
+| `X` | Swap primary and secondary colors |
+| `Return` / `Esc` | Apply / cancel the current effect (or close a polygonal lasso) |
 
 ---
 
@@ -117,11 +137,13 @@ PixelCraftPro/
 │   │   ├── ASCII/                 # ASCIIGenerator
 │   │   └── IO/                    # ImageImporter, ImageExporter, PSDCodec, PCProDocument
 │   └── PixelCraftApp/             # macOS Native AppKit + SwiftUI application
-│       ├── PixelCraftApp.swift    # App lifecycle, system commands, menus
-│       ├── CanvasViewRepresentable.swift # Interactive MTKView canvas & Drag-and-Drop
-│       ├── FloatingToolbarView.swift     # Glassmorphic floating tool selector
-│       ├── SidebarView.swift      # Layer stack & History panel
-│       └── InspectorView.swift    # Contextual tool settings & Quick Export
+│       ├── PixelCraftApp.swift    # App lifecycle, menus, file actions, New/Export sheets
+│       ├── EditorState.swift      # Shared UI state: tools, colors, effect sessions (preview/apply/cancel)
+│       ├── CanvasViewRepresentable.swift # MTKView canvas, input handling, selection/brush overlay
+│       ├── FloatingToolbarView.swift     # Bottom toolbar with the basic tools
+│       ├── ToolOptionsBar.swift   # Top options bar for the active tool
+│       ├── GeneratorDock.swift    # Right-hand effects dock and panels
+│       └── SidebarView.swift      # Layer stack (select, reorder, rename) & History
 ├── Tests/                         # 11 test suites (117 tests)
 └── PixelCraftPro.app              # Standalone macOS Application Bundle
 ```

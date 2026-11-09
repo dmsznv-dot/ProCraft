@@ -51,7 +51,18 @@ public final class Document: Identifiable, ObservableObject, @unchecked Sendable
         }
     }
     
-    @Published public var viewportTransform: ViewportTransform
+    /// Viewport pan/zoom. Intentionally *not* `@Published`: it changes on every scroll/pinch event and
+    /// publishing it re-evaluated the whole SwiftUI hierarchy (layers list, panels) each time.
+    /// UI that only needs the zoom level observes `zoomPercent` instead.
+    public var viewportTransform: ViewportTransform {
+        didSet {
+            let z = Int((viewportTransform.zoom * 100.0).rounded())
+            if z != zoomPercent { zoomPercent = z }
+        }
+    }
+
+    /// Current zoom level in percent (rounded), published for HUD/status display.
+    @Published public private(set) var zoomPercent: Int = 100
     public let undoManager: TileUndoManager
     @Published public var selectionMask: SelectionMask?
     
@@ -236,6 +247,30 @@ public final class Document: Identifiable, ObservableObject, @unchecked Sendable
         }
     }
     
+    /// Reorders the whole stack to match `orderedIDs` (bottom → top). IDs that are unknown are ignored and
+    /// layers missing from the list keep their relative order at the end. The active layer is preserved.
+    public func setLayerOrder(_ orderedIDs: [UUID]) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let activeID = layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex].id : nil
+        var remaining = layers
+        var reordered: [any Layer] = []
+        reordered.reserveCapacity(layers.count)
+        for id in orderedIDs {
+            if let idx = remaining.firstIndex(where: { $0.id == id }) {
+                reordered.append(remaining.remove(at: idx))
+            }
+        }
+        reordered.append(contentsOf: remaining)
+        guard reordered.map({ $0.id }) != layers.map({ $0.id }) else { return }
+
+        layers = reordered
+        if let activeID, let idx = layers.firstIndex(where: { $0.id == activeID }) {
+            activeLayerIndex = idx
+        }
+    }
+
     /// Selects the active layer by index with bounds safety.
     public func selectLayer(at index: Int) {
         lock.lock()
@@ -355,6 +390,21 @@ public final class Document: Identifiable, ObservableObject, @unchecked Sendable
         }
     }
 
+    /// Resets the document to a fresh canvas of the given size with a single background layer.
+    public func resetToNewCanvas(
+        title: String = "Untitled",
+        size: CGSize,
+        background: SIMD4<Float>? = SIMD4<Float>(1, 1, 1, 1),
+        viewportSize: CGSize = CGSize(width: 1200, height: 800)
+    ) throws {
+        let fresh = try Document(title: title, canvasSize: size)
+        if let bg = background, let layer = fresh.activeLayer as? BitmapLayer {
+            layer.fillSolid(color: bg, canvasSize: size)
+        }
+        fresh.viewportTransform = ViewportTransform.fitToViewport(canvasSize: size, viewportSize: viewportSize)
+        replace(with: fresh)
+    }
+
     /// Sets the document title and notifies observers.
     public func setTitle(_ newTitle: String) {
         lock.lock()
@@ -427,6 +477,39 @@ extension Document {
     }
 
     public func markDirty() {
+        objectWillChange.send()
+    }
+
+    /// Replaces the pixel content of a bitmap layer with `newGrid` and records a single undo step.
+    /// Used by all "generators" (transform, pixelate, chroma key, liquify, AI background removal) so they
+    /// can be undone with Cmd+Z — previously they opened an undo group but registered nothing in it.
+    public func commitGridEdit(layer: BitmapLayer, newGrid: SparseTileGrid, actionName: String) {
+        let before = layer.tileGrid.duplicate()
+        commitGridEdit(layer: layer, before: before, newGrid: newGrid, actionName: actionName)
+    }
+
+    /// Same as above, but with an explicit "before" snapshot (for edits that were previewed live on the layer).
+    public func commitGridEdit(layer: BitmapLayer, before: SparseTileGrid, newGrid: SparseTileGrid, actionName: String) {
+        layer.tileGrid.copyFrom(newGrid)
+
+        let coords = Set(before.allAllocatedCoordinates()).union(newGrid.allAllocatedCoordinates())
+        var beforeTiles: [TileCoord: Data?] = [:]
+        var afterTiles: [TileCoord: Data?] = [:]
+        for coord in coords {
+            let b = before.extractTileData(coord: coord)
+            let a = newGrid.extractTileData(coord: coord)
+            if b == a { continue }
+            beforeTiles.updateValue(b, forKey: coord)
+            afterTiles.updateValue(a, forKey: coord)
+        }
+        if !beforeTiles.isEmpty {
+            undoManager.registerCommand(TileDeltaUndoCommand(
+                actionName: actionName,
+                layerId: layer.id,
+                beforeTiles: beforeTiles,
+                afterTiles: afterTiles
+            ))
+        }
         objectWillChange.send()
     }
 }

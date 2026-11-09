@@ -111,7 +111,9 @@ public final class CanvasRenderer: @unchecked Sendable {
             return
         }
 
-        let viewportSize = CGSize(width: view.drawableSize.width, height: view.drawableSize.height)
+        // Pan/zoom and mouse coordinates live in view *points*; the drawable is in *pixels*
+        // (2x on Retina). Using points here keeps the canvas aligned with the cursor.
+        let viewportSize = view.bounds.size.width > 0 ? view.bounds.size : view.drawableSize
 
         // 1. Draw Checkerboard background over canvas rect
         drawCheckerboard(encoder: encoder, canvasSize: canvasSize, viewportSize: viewportSize, transform: transform)

@@ -1,54 +1,101 @@
 import SwiftUI
 import AppKit
 
-public struct FloatingToolbarView: View {
-    @Binding public var activeTool: ActiveToolType
-    @Binding public var activeColor: Color
+/// Bottom toolbar: only the basic canvas tools, each with an icon, a caption and a tooltip
+/// that includes the keyboard shortcut. Generators live in the right-hand dock.
+struct FloatingToolbarView: View {
+    @ObservedObject var state: EditorState
 
-    public init(activeTool: Binding<ActiveToolType>, activeColor: Binding<Color>) {
-        self._activeTool = activeTool
-        self._activeColor = activeColor
+    private var groups: [[CanvasTool]] {
+        let all = CanvasTool.allCases
+        return [0, 1, 2].map { g in all.filter { $0.group == g } }
     }
 
-    public var body: some View {
-        HStack(spacing: 4) {
-            // Color well
-            ColorPicker("", selection: $activeColor, supportsOpacity: true)
-                .labelsHidden()
-                .frame(width: 28, height: 28)
+    var body: some View {
+        HStack(spacing: 6) {
+            ColorPairView(state: state)
                 .padding(.leading, 4)
 
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 2)
-
-            ForEach(ActiveToolType.allCases) { tool in
-                Button(action: {
-                    activeTool = tool
-                }) {
-                    Image(systemName: tool.iconName)
-                        .font(.system(size: 14, weight: activeTool == tool ? .bold : .regular))
-                        .foregroundColor(activeTool == tool ? .accentColor : .primary)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(activeTool == tool ? Color.accentColor.opacity(0.18) : Color.clear)
-                        )
+            ForEach(groups.indices, id: \.self) { index in
+                Divider().frame(height: 34)
+                HStack(spacing: 2) {
+                    ForEach(groups[index]) { tool in
+                        ToolButton(
+                            tool: tool,
+                            isSelected: state.tool == tool && state.openGenerator == nil
+                        ) {
+                            if state.openGenerator != nil { state.closeGenerator() }
+                            state.tool = tool
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .help(tool.title)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 5)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
+                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 6)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
+    }
+}
+
+private struct ToolButton: View {
+    let tool: CanvasTool
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: tool.iconName)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .frame(height: 18)
+                Text(tool.shortLabel)
+                    .font(.system(size: 9, weight: isSelected ? .semibold : .regular))
+                    .lineLimit(1)
+            }
+            .foregroundColor(isSelected ? .accentColor : .primary)
+            .frame(width: 52, height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(tool.title) (\(String(tool.shortcut).uppercased())) — \(tool.hint)")
+    }
+}
+
+/// Primary / secondary color swatches (Photoshop-style), with a swap button.
+struct ColorPairView: View {
+    @ObservedObject var state: EditorState
+
+    var body: some View {
+        HStack(spacing: 4) {
+            VStack(spacing: 2) {
+                ColorPicker("", selection: $state.primaryColor, supportsOpacity: true)
+                    .labelsHidden()
+                    .help("Primary color (brush, fill, gradient start)")
+                ColorPicker("", selection: $state.secondaryColor, supportsOpacity: true)
+                    .labelsHidden()
+                    .scaleEffect(0.85)
+                    .help("Secondary color (gradient end)")
+            }
+            Button {
+                state.swapColors()
+            } label: {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Swap colors (X)")
+        }
     }
 }

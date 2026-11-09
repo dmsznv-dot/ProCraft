@@ -1,0 +1,69 @@
+name: Build macOS DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "fix/**"]
+    paths:
+      - "Sources/**"
+      - "Tests/**"
+      - "Package.swift"
+      - "packaging/**"
+      - "scripts/build_dmg.sh"
+      - ".github/workflows/build-dmg.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s /Applications/Xcode_16.app || true
+          swift --version
+
+      - name: Build app and DMG
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          scripts/build_dmg.sh "1.1.0-beta.${{ github.run_number }}" 2>&1 | tee logs/build-log.txt
+
+      - name: Unit tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee logs/test-log.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PixelCraftPro-build
+          path: |
+            build/*.dmg
+            logs/*.txt
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.1.0-beta.${{ github.run_number }}"
+          NOTES="Automated beta build of ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Ad-hoc signed, not notarized: open the first time via right-click → Open. Unit tests: ${{ steps.tests.outcome }} (see test-log.txt)."
+          gh release create "$TAG" build/*.dmg logs/*.txt \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "PixelCraft Pro $TAG" --notes "$NOTES"
+
+      - name: Publish failure logs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-failed-${{ github.run_number }}"
+          gh release create "$TAG" logs/*.txt --prerelease --target "$GITHUB_SHA" \
+            --title "Failed build ${{ github.run_number }}" \
+            --notes "Build failed for ${GITHUB_SHA::7}; logs attached. Safe to delete."
